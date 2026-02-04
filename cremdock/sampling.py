@@ -1,6 +1,6 @@
 import numpy as np
 
-def sample_score(row_ids, cur, radius, n, degree):
+def sample_score(row_ids, cur, radius, n, degree=None):
     """
     Performs random selection of fragments proportionally to a docking score (Vina).
     :param row_ids: the list of row ids of fragments to consider
