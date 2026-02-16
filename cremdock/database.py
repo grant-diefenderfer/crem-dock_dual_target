@@ -92,7 +92,6 @@ def insert_starting_structures_to_db(fname, db_fname, prefix):
                     # rdkit numeration starts with 0 and sdf numeration starts with 1
                     protected_user_ids = [int(idx) - 1 for idx in mol.GetProp('protected_user_ids').split(',')]
                     protected_user_canon_ids = ','.join(map(str, get_canon_for_atom_idx(mol, protected_user_ids)))
-                mol_mw, mol_rtb, mol_logp, mol_qed, mol_tpsa = calc_properties(mol)
                 mol_mw, mol_rtb, mol_logp, mol_qed, mol_tpsa, mol_sa_score = calc_properties(mol)
                 data.append((f'{prefix}-{name}' if prefix else name,
                              0,
