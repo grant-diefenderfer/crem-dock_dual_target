@@ -192,6 +192,7 @@ def make_iteration(dbname, config,config2,  mol_dock_func, priority_func, ntop, 
 
 
 def entry_point():
+    print("running modified cremdock")
     parser = argparse.ArgumentParser(description='Fragment growing within a binding pocket guided by molecular docking.',
                                      formatter_class=lambda prog: argparse.ArgumentDefaultsHelpFormatter(prog, width=80))
 
