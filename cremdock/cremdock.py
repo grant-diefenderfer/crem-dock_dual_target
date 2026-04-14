@@ -42,7 +42,7 @@ def supply_parent_child_mols(d):
             n += 1
 
 
-def make_iteration(dbname, config, mol_dock_func, priority_func, ntop, nclust, mw, rmsd, rtb, logp, tpsa,
+def make_iteration(dbname, config,config2,  mol_dock_func, priority_func, ntop, nclust, mw, rmsd, rtb, logp, tpsa,
                    alg_type, ranking_score_func, ncpu, protonation, ring_sample, make_docking=True, tautomerize=False,
                    dask_client=None, plif_list=None, plif_protein=None, plif_cutoff=1, prefix=None,
                    n_iterations=None, **kwargs):
@@ -64,15 +64,35 @@ def make_iteration(dbname, config, mol_dock_func, priority_func, ntop, nclust, m
             logging.debug(f'iteration {iteration}, start mols selection for docking')
             mols = eadb.select_mols_to_dock(conn, add_sql=f' AND iteration={iteration}')
             logging.debug(f'iteration {iteration}, start docking')
-            for mol_id, res in docking(mols,
-                                       dock_func=mol_dock_func,
-                                       dock_config=config,
-                                       priority_func=priority_func,
-                                       ncpu=ncpu,
-                                       dask_client=dask_client,
-                                       ring_sample=ring_sample):
-                if res:
-                    eadb.update_db(conn, mol_id, res)
+            res1_dict = dict(docking(mols,
+                                     dock_func=mol_dock_func,
+                                     dock_config=config,
+                                     priority_func=priority_func,
+                                     ncpu=ncpu,
+                                     dask_client=dask_client,
+                                     ring_sample=ring_sample))
+
+            res2_dict = dict(docking(mols,
+                                     dock_func=mol_dock_func,
+                                     dock_config=config2,
+                                     priority_func=priority_func,
+                                     ncpu=ncpu,
+                                     dask_client=dask_client,
+                                     ring_sample=ring_sample))
+
+            for mol_id in res1_dict.keys():
+                r1 = res1_dict.get(mol_id)
+                r2 = res2_dict.get(mol_id)
+                
+                if r1 and r2:
+                    combined_res = r1.copy() 
+                    score1 = r1.get('docking_score', 0)
+                    score2 = r2.get('docking_score', 0)
+                    
+                    # Rank by the weakest binding affinity for dual inhibition
+                    combined_res['docking_score'] = -(score1*score2)**0.5
+                    
+                    eadb.update_db(conn, mol_id, combined_res)
             logging.debug(f'iteration {iteration}, end docking')
             database.update_db(conn, iteration, plif_ref=plif_list, plif_protein_fname=plif_protein, ncpu=ncpu)
             logging.debug(f'iteration {iteration}, DB was updated (including rmsd and plif if set)')
@@ -281,6 +301,15 @@ def entry_point():
                              'n_poses: 10\n'
                              'seed: -1\n'
                              'gnina.yml\n')
+    group5.add_argument('--config2', metavar='FILENAME', required=False,
+                        help='YAML file with parameters used by docking program.\n'
+                             'vina.yml\n'
+                             'protein: path to pdbqt file with a protein\n'
+                             'protein_setup: path to a text file with coordinates of a binding site\n'
+                             'exhaustiveness: 8\n'
+                             'n_poses: 10\n'
+                             'seed: -1\n'
+                             'gnina.yml\n')
     group5.add_argument('--ring_sample', action='store_true', default=False,
                                help='sample conformations of saturated rings. Multiple starting conformers will be docked and '
                                     'the best one will be stored. Otherwise a single random ring conformer will be used.')
@@ -375,7 +404,7 @@ def entry_point():
     iteration = 0
     try:
         while True:
-            iteration, res = make_iteration(dbname=args.output, config=args.config, mol_dock_func=mol_dock,
+            iteration, res = make_iteration(dbname=args.output, config=args.config,config2=args.config2,  mol_dock_func=mol_dock,
                                             priority_func=pred_dock_time, ntop=args.ntop, nclust=args.nclust,
                                             mw=args.mw, rmsd=args.rmsd, rtb=args.rtb, logp=args.logp, tpsa=args.tpsa,
                                             alg_type=args.search, ranking_score_func=ranking_score(args.ranking),
