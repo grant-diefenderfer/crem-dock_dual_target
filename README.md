@@ -17,16 +17,10 @@ This tool automates generation of molecules using [CReM](https://github.com/DrrD
 
 ## Installation
 
-Install dependencies and the software:
+Install dependencies and the software using `env.yml`
 
-1. Install a conda environment with [easydock](https://github.com/ci-lab-cz/easydock) (minimal version 1.0)
-2. On top install further dependencies and crem-dock
-```
-pip install prolif crem
-
-pip install cremdock
-# or the latest version from the repository
-pip install git+https://github.com/DrrDom/crem-dock.git
+```bash
+conda env create -f env.yml
 ```
 
 ## Generation pipeline
@@ -157,7 +151,7 @@ If `cremdock` running was interrupted it can be re-run using the same command an
 To retrieve data from an output database one can use funtionality from EasyDock. More examples are in EasyDock repository.  
 
 ```bash
-get_sdf_from_dock_db -i mode1_1.db -o mode1_1.sdf --fields docking_score
+get_sdf_from_easydock -i mode1_1.db -o mode1_1.sdf --fields docking_score
 ```
 
 Data can also be retrieved in SMILES format as well as any additional columns (we usually use tab as a separator).
