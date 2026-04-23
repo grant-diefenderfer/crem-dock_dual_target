@@ -74,12 +74,19 @@ def plif_similarity(mol, plif_protein_fname, plif_ref_df, ncpu=1):
     plf_prot = plf.Molecule(Chem.MolFromPDBFile(plif_protein_fname, removeHs=False, sanitize=False))
     fp = plf.Fingerprint(['Hydrophobic', 'HBDonor', 'HBAcceptor', 'Anionic', 'Cationic', 'CationPi', 'PiCation',
                           'FaceToFace', 'EdgeToFace', 'MetalAcceptor'])
-    fp.run_from_iterable([plf.Molecule.from_rdkit(mol)], plf_prot, n_jobs=ncpu)
+    plf_mol = plf.Molecule.from_rdkit(mol)
+    fp.run_from_iterable([plf_mol], plf_prot, n_jobs=ncpu)
     df = fp.to_dataframe()
-    df.columns = ['.'.join(item.strip().lower() for item in items[1:]) for items in df.columns]
-    #with pd.option_context("future.no_silent_downcasting", True):
+
+    if df.empty or df.shape[1] == 0:
+        return mol.GetProp('_Name'), 0.0
+
+    df.columns = [items[1].strip().lower() + '.' + ''.join(item.strip().lower() for item in items[2:])
+                  for items in df.columns]
     df = pd.concat([plif_ref_df, df]).fillna(False).astype(bool)
     b = plf.to_bitvectors(df)
+    if len(b) < 2:
+        return mol.GetProp('_Name'), 0.0
     sim = DataStructs.TverskySimilarity(b[0], b[1], 1, 0)
     return mol.GetProp('_Name'), round(sim, 3)
 

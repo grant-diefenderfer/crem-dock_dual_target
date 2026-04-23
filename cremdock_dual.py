@@ -95,9 +95,12 @@ def make_iteration(dbname, config,config2,  mol_dock_func, priority_func, ntop, 
                     combined_res['docking_score'] = round(-(score1*score2)**0.5, 3)
                     combined_res['docking_score_1'] = score1
                     combined_res['docking_score_2'] = score2
+                    #save second sdf
+                    combined_res['mol_block_2'] = r2.get('mol_block')
                     
                     eadb.update_db(conn, mol_id, combined_res)
             logging.debug(f'iteration {iteration}, end docking')
+            conn.commit()
 
             database.update_db(conn, iteration, plif_ref=plif_list, plif_protein_fname=plif_protein,plif_ref2=plif_list2, plif_protein_fname2=plif_protein2,  ncpu=ncpu)
             logging.debug(f'iteration {iteration}, DB was updated (including rmsd and plif if set)')
@@ -127,7 +130,7 @@ def make_iteration(dbname, config,config2,  mol_dock_func, priority_func, ntop, 
                 logging.info(f'iteration {iteration}, no molecules were selected for growing')
             else:
                 logging.debug(f'iteration {iteration}, start selection and growing')
-                mols = database.get_mols(conn, mol_data.index)
+                mols = database.get_mols(conn, mol_data.index, mol_block_col="mol_block")
                 if alg_type == 1:
                     res = selection_and_grow_greedy(mols=mols, conn=conn, protein_xyz=protein_xyz,
                                                     ntop=ntop, max_mw=mw, max_rtb=rtb, max_logp=logp, max_tpsa=tpsa,

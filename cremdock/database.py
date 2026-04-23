@@ -37,6 +37,7 @@ def create_db(fname, args, args_to_save):
     with sqlite3.connect(fname, timeout=90) as conn:
         cur = conn.cursor()
         # cur.execute("PRAGMA journal_mode=WAL")
+        cur.execute("ALTER TABLE mols ADD mol_block_2 TEXT")
         cur.execute("ALTER TABLE mols ADD iteration INTEGER")
         cur.execute("ALTER TABLE mols ADD parent_id TEXT")
         cur.execute("ALTER TABLE mols ADD mw REAL")
@@ -133,13 +134,13 @@ def update_db(conn, iteration, plif_ref=None, plif_protein_fname=None,plif_ref2=
                                           "SELECT id, parent_id FROM mols WHERE id IN (?) AND parent_id IS NOT NULL",
                                           docked_mol_ids))
     uniq_parent_ids = list(set(parent_ids.values()))
-    parent_mols = get_mols(conn, uniq_parent_ids)
+    parent_mols = get_mols(conn, uniq_parent_ids, mol_block_col="mol_block")
     parent_mols = {m.GetProp('_Name'): m for m in parent_mols}
 
     # update rmsd
     sql = f"SELECT id FROM mols WHERE iteration = {iteration} AND rmsd IS NULL"
     rmsd_null_mol_ids = [i[0] for i in cur.execute(sql).fetchall()]
-    mols = get_mols(conn, set(docked_mol_ids) & set(rmsd_null_mol_ids))
+    mols = get_mols(conn, set(docked_mol_ids) & set(rmsd_null_mol_ids), mol_block_col="mol_block")
 
     for i, mol in enumerate(mols, 1):
         mol_id = mol.GetProp('_Name')
@@ -158,40 +159,22 @@ def update_db(conn, iteration, plif_ref=None, plif_protein_fname=None,plif_ref2=
 
     # update plif
     
-    # if plif_ref is not None:
-    #     sql = f"SELECT id FROM mols WHERE iteration = {iteration} AND plif_sim IS NULL"
-    #     plif_null_mol_ids = [i[0] for i in cur.execute(sql).fetchall()]
-    #     mols = get_mols(conn, set(docked_mol_ids) & set(plif_null_mol_ids))
-
-    #     pool = Pool(ncpu)
-    #     try:
-    #         ref_df = pd.DataFrame(data={item: True for item in plif_ref}, index=['reference'])
-    #         for i, (mol_id, sim) in enumerate(pool.imap_unordered(partial(plif.plif_similarity,
-    #                                                                       plif_protein_fname=plif_protein_fname,
-    #                                                                       plif_ref_df=ref_df),
-    #                                                               mols), 1):
-    #             cur.execute(f"""UPDATE mols
-    #                                SET 
-    #                                    plif_sim = ? 
-    #                                WHERE
-    #                                    id = ?
-    #                             """, (sim, mol_id))
-    #             if i % 100 == 0:
-    #                 conn.commit()
-    #         conn.commit()
-    #     finally:
-    #         pool.close()
-    #         pool.join()
 
     if plif_ref is not None:
-        update_plif(conn, cur, iteration, docked_mol_ids, ncpu, plif_ref, plif_protein_fname, db_col="plif_sim")
+        update_plif(conn, cur, iteration, docked_mol_ids, ncpu, plif_ref, plif_protein_fname, db_col="plif_sim", mol_block_call="mol_block")
     if plif_ref2 is not None:
-        update_plif(conn, cur, iteration, docked_mol_ids, ncpu, plif_ref2, plif_protein_fname2, db_col="plif_sim2")
+        update_plif(conn, cur, iteration, docked_mol_ids, ncpu, plif_ref2, plif_protein_fname2, db_col="plif_sim2", mol_block_call="mol_block_2")
 
-def update_plif(conn, cur, iteration, docked_mol_ids, ncpu, plif_ref, plif_protein_fname, db_col):
+def update_plif(conn, cur, iteration, docked_mol_ids, ncpu, plif_ref, plif_protein_fname, db_col, mol_block_call):
     sql = f"SELECT id FROM mols WHERE iteration = {iteration} AND {db_col} IS NULL"
     plif_null_mol_ids = [i[0] for i in cur.execute(sql).fetchall()]
-    mols = get_mols(conn, set(docked_mol_ids) & set(plif_null_mol_ids))
+    mols = get_mols(conn, set(docked_mol_ids) & set(plif_null_mol_ids), mol_block_col=mol_block_call)
+    print(f"MOLS COUNT: {len(mols)}")
+    print(f"REFERENCE INTERACTIONS: {plif_ref}")
+    for mol in mols[:2]:  # just print first 2 mols
+        conf = mol.GetConformer()
+        pos = conf.GetAtomPosition(0)
+        print(f"MOL: {mol.GetProp('_Name')} | HAS Hs: {any(a.GetAtomicNum()==1 for a in mol.GetAtoms())} | NUM ATOMS: {mol.GetNumAtoms()} | FIRST ATOM XYZ: {pos.x:.2f} {pos.y:.2f} {pos.z:.2f}")
 
     pool = Pool(ncpu)
     try:
@@ -312,7 +295,7 @@ def get_mol_scores(conn, mol_ids):
     return dict(eadb.select_from_db(cur, sql, mol_ids))
 
 
-def get_mols(conn, mol_ids):
+def get_mols(conn, mol_ids, mol_block_col):
     """
     Returns list of Mol objects from docking DB, order is arbitrary, molecules with errors will be silently skipped
     :param conn: connection to docking DB
@@ -320,16 +303,17 @@ def get_mols(conn, mol_ids):
     :return:
     """
     cur = conn.cursor()
-    sql = 'SELECT mol_block, protected_user_canon_ids FROM mols WHERE id IN (?) AND mol_block IS NOT NULL'
+    sql = f'SELECT id, {mol_block_col}, protected_user_canon_ids FROM mols WHERE id IN (?) AND {mol_block_col} IS NOT NULL'
 
     mols = []
     for items in eadb.select_from_db(cur, sql, mol_ids):
-        m = Chem.MolFromMolBlock(items[0], removeHs=False)
+        mol_id = items[0]
+        m = Chem.MolFromMolBlock(items[1], removeHs=False)
         Chem.AssignStereochemistryFrom3D(m)
         if not m:
             continue
-        if len(items) > 1 and items[1] is not None:
-            m.SetProp('protected_user_canon_ids', items[1])
+        if len(items) > 2 and items[2] is not None:
+            m.SetProp('protected_user_canon_ids', items[2])
         mol_id, stereo_id = mol_name_split(m.GetProp('_Name'))
         m.SetProp('_Name', mol_id)
         mols.append(m)
