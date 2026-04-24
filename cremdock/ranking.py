@@ -103,7 +103,7 @@ def score_by_fcsp3_bm(conn, mol_ids):
     """
     scores = get_inverted_mol_scores(conn, mol_ids)
     scale_scores = scale_min_max(scores)
-    mol_dict = dict(zip(mol_ids, get_mols(conn, mol_ids)))
+    mol_dict = dict(zip(mol_ids, get_mols(conn, mol_ids, mol_block_col='mol_block')))
     fcsp3_bm = {mol_id: CalcFractionCSP3(GetScaffoldForMol(m)) for mol_id, m in mol_dict.items()}
     fcsp3_scale = {mol_id: fcsp3 / 0.3 if fcsp3 <= 0.3 else 1 for mol_id, fcsp3 in fcsp3_bm.items()}
     stat_scores = {mol_id: (scale_scores[mol_id] * fcsp3_scale[mol_id]) for mol_id in mol_ids}
@@ -118,7 +118,7 @@ def score_by_num_heavy_atoms(conn, mol_ids):
     :return: dict {mol_id: score}
     """
     scores = get_inverted_mol_scores(conn, mol_ids)
-    mol_dict = dict(zip(mol_ids, get_mols(conn, mol_ids)))
+    mol_dict = dict(zip(mol_ids, get_mols(conn, mol_ids, mol_block_col='mol_block')))
     stat_scores = {mol_id: scores[mol_id] / mol_dict[mol_id].GetNumHeavyAtoms() for mol_id in mol_ids}
     return stat_scores
 
@@ -132,7 +132,7 @@ def score_by_num_heavy_atoms_fcsp3_bm(conn, mol_ids):
     """
     scores = score_by_num_heavy_atoms(conn, mol_ids)
     scale_scores = scale_min_max(scores)
-    mol_dict = dict(zip(mol_ids, get_mols(conn, mol_ids)))
+    mol_dict = dict(zip(mol_ids, get_mols(conn, mol_ids, mol_block_col='mol_block')))
     fcsp3_bm = {mol_id: CalcFractionCSP3(GetScaffoldForMol(m)) for mol_id, m in mol_dict.items()}
     fcsp3_scale = {mol_id: fcsp3 / 0.3 if fcsp3 <= 0.3 else 1 for mol_id, fcsp3 in fcsp3_bm.items()}
     stat_scores = {mol_id: (scale_scores[mol_id] * fcsp3_scale[mol_id]) for mol_id in mol_ids}
@@ -148,7 +148,7 @@ def score_by_fcsp3_bm_squared(conn, mol_ids):
     """
     scores = get_inverted_mol_scores(conn, mol_ids)
     scale_scores = scale_min_max(scores)
-    mol_dict = dict(zip(mol_ids, get_mols(conn, mol_ids)))
+    mol_dict = dict(zip(mol_ids, get_mols(conn, mol_ids, mol_block_col='mol_block')))
     fcsp3_bm = {mol_id: CalcFractionCSP3(GetScaffoldForMol(m)) for mol_id, m in mol_dict.items()}
     fcsp3_scale = {mol_id: fcsp3 / 0.3 if fcsp3 <= 0.3 else 1 for mol_id, fcsp3 in fcsp3_bm.items()}
     stat_scores = {mol_id: (scale_scores[mol_id] * fcsp3_scale[mol_id] ** 2) for mol_id in mol_ids}

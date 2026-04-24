@@ -44,7 +44,7 @@ def supply_parent_child_mols(d):
 
 def make_iteration(dbname, config,config2,  mol_dock_func, priority_func, ntop, nclust, mw, rmsd, rtb, logp, tpsa,
                    alg_type, ranking_score_func, ncpu, protonation, ring_sample, make_docking=True, tautomerize=False,
-                   dask_client=None, plif_list=None, plif_protein=None, plif_cutoff=1, prefix=None,
+                   dask_client=None, plif_list=None, plif_protein=None,plif_list2=None, plif_protein2=None, plif_cutoff=1,plif_cutoff2=1,  prefix=None,
                    n_iterations=None, **kwargs):
     iteration = database.get_last_iter_from_db(dbname)
     if n_iterations and n_iterations == iteration:
@@ -63,6 +63,7 @@ def make_iteration(dbname, config,config2,  mol_dock_func, priority_func, ntop, 
                 logging.debug(f'iteration {iteration}, end protonation')
             logging.debug(f'iteration {iteration}, start mols selection for docking')
             mols = eadb.select_mols_to_dock(conn, add_sql=f' AND iteration={iteration}')
+            #put rdkit mols in list, and run docking twice
             mols_list = list(mols)
             logging.debug(f'iteration {iteration}, start docking')
             res1_dict = dict(docking(mols_list,
@@ -90,12 +91,18 @@ def make_iteration(dbname, config,config2,  mol_dock_func, priority_func, ntop, 
                     score1 = r1.get('docking_score', 0)
                     score2 = r2.get('docking_score', 0)
                     
-                    # Rank by the weakest binding affinity for dual inhibition
-                    combined_res['docking_score'] = -(score1*score2)**0.5
+                    # take geo mean of docking scores
+                    combined_res['docking_score'] = round(-(score1*score2)**0.5, 3)
+                    combined_res['docking_score_1'] = score1
+                    combined_res['docking_score_2'] = score2
+                    #save second sdf
+                    combined_res['mol_block_2'] = r2.get('mol_block')
                     
                     eadb.update_db(conn, mol_id, combined_res)
             logging.debug(f'iteration {iteration}, end docking')
-            database.update_db(conn, iteration, plif_ref=plif_list, plif_protein_fname=plif_protein, ncpu=ncpu)
+            conn.commit()
+
+            database.update_db(conn, iteration, plif_ref=plif_list, plif_protein_fname=plif_protein,plif_ref2=plif_list2, plif_protein_fname2=plif_protein2,  ncpu=ncpu)
             logging.debug(f'iteration {iteration}, DB was updated (including rmsd and plif if set)')
 
             res = dict()
@@ -107,10 +114,14 @@ def make_iteration(dbname, config,config2,  mol_dock_func, priority_func, ntop, 
 
             rmsd_plif_flag = False
             if iteration > 0 and rmsd is not None:
-                mol_data = mol_data.loc[mol_data['rmsd'] <= rmsd]  # filter by RMSD
+                mol_data = mol_data.loc[mol_data['rmsd'] <= rmsd]  #  by RMSD
                 rmsd_plif_flag = True
             if plif_list and len(mol_data.index) > 0:
                 mol_data = mol_data.loc[mol_data['plif_sim'] >= plif_cutoff]  # filter by PLIF
+                
+                rmsd_plif_flag = True
+            if plif_list2 and len(mol_data.index) > 0:
+                mol_data = mol_data.loc[mol_data['plif_sim2'] >= plif_cutoff2]
                 rmsd_plif_flag = True
             if rmsd_plif_flag:
                 logging.info(f'iteration {iteration}, docked mols count after rmsd/plif filters: {mol_data.shape[0]}')
@@ -119,7 +130,7 @@ def make_iteration(dbname, config,config2,  mol_dock_func, priority_func, ntop, 
                 logging.info(f'iteration {iteration}, no molecules were selected for growing')
             else:
                 logging.debug(f'iteration {iteration}, start selection and growing')
-                mols = database.get_mols(conn, mol_data.index)
+                mols = database.get_mols(conn, mol_data.index, mol_block_col="mol_block")
                 if alg_type == 1:
                     res = selection_and_grow_greedy(mols=mols, conn=conn, protein_xyz=protein_xyz,
                                                     ntop=ntop, max_mw=mw, max_rtb=rtb, max_logp=logp, max_tpsa=tpsa,
@@ -193,7 +204,7 @@ def make_iteration(dbname, config,config2,  mol_dock_func, priority_func, ntop, 
 
 
 def entry_point():
-    print("running modified cremdock (script inside cremdock folder)")
+    print("running modified cremdock (script outside cremdock folder)")
     parser = argparse.ArgumentParser(description='Fragment growing within a binding pocket guided by molecular docking.',
                                      formatter_class=lambda prog: argparse.ArgumentDefaultsHelpFormatter(prog, width=80))
 
@@ -286,6 +297,16 @@ def entry_point():
     group6.add_argument('--plif_protein', metavar='protein.pdb', required=False, type=filepath_type,
                         help='PDB file with the same protein as for docking, but it should have all hydrogens '
                              'explicit. Required for correct PLIF detection.')
+    group6.add_argument('--plif2', metavar='STRING', default=None, required=False, nargs='*',
+                        type=str_lower_type,
+                        help='list of protein-ligand interactions for second protein compatible with ProLIF. Dot-separated names of each '
+                             'interaction which should be observed for a ligand to pass to the next iteration. Derive '
+                             'these names from a reference ligand. Example: ASP115.HBDonor or ARG34.A.Hydrophobic.')
+    group6.add_argument('--plif_cutoff2', metavar='NUMERIC', default=1, required=False, type=similarity_value_type,
+                        help='cutoff of Tversky similarity, value between 0 and 1.')
+    group6.add_argument('--plif_protein2', metavar='protein.pdb', required=False, type=filepath_type,
+                        help='PDB file with the same second protein as for docking, but it should have all hydrogens '
+                             'explicit. Required for correct PLIF detection.')
 
     group5 = parser.add_argument_group('Docking parameters')
     group5.add_argument('--protonation', default=None, required=False, type=protonation_type,
@@ -295,7 +316,7 @@ def entry_point():
     group5.add_argument('--program', default='vina', required=False, choices=['vina', 'gnina', 'vina-gpu', 'qvina'],
                         help='name of a docking program.')
     group5.add_argument('--config', metavar='FILENAME', required=False,
-                        help='YAML file with parameters used by docking program.\n'
+                        help='YAML file with parameters used by docking program for second protein.\n'
                              'vina.yml\n'
                              'protein: path to pdbqt file with a protein\n'
                              'protein_setup: path to a text file with coordinates of a binding site\n'
@@ -412,6 +433,7 @@ def entry_point():
                                             alg_type=args.search, ranking_score_func=ranking_score(args.ranking),
                                             ncpu=args.ncpu, protonation=args.protonation, ring_sample=args.ring_sample,
                                             make_docking=make_docking, dask_client=dask_client, plif_list=args.plif,
+                                            plif_list2=args.plif2, plif_protein2=args.plif_protein2, plif_cutoff2=args.plif_cutoff2,
                                             plif_protein=args.plif_protein, plif_cutoff=args.plif_cutoff,
                                             prefix=args.prefix, db_name=args.db, radius=args.radius,
                                             min_freq=args.min_freq, min_atoms=args.min_atoms, max_atoms=args.max_atoms,
