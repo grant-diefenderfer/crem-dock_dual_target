@@ -191,7 +191,10 @@ def scale_min_max(scores):
     :return:
     """
     min_score, max_score = min(scores.values()), max(scores.values())
-    scale_scores = {mol_id: (scores[mol_id] - min_score) / (max_score - min_score) for mol_id in scores.keys()}
+    if max_score == min_score:
+        scale_scores = {mol_id: 1.0 for mol_id in scores.keys()}
+    else:
+        scale_scores = {mol_id: (scores[mol_id] - min_score) / (max_score - min_score) for mol_id in scores.keys()}
     return scale_scores
 
 

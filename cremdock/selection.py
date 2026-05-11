@@ -168,7 +168,7 @@ def selection_and_grow_pareto(mols, conn, max_mw, max_rtb, max_logp, max_tpsa, p
     mol_dict = dict(zip(mol_ids, mols))
     scores = ranking_func(conn, mol_ids)
     pareto_mol_ids = get_pareto_front(mol_dict, scores, parameter=pareto_property, ncpu=ncpu)
-    mols = get_mols(conn, pareto_mol_ids)
+    mols = get_mols(conn, pareto_mol_ids, mol_block_col='mol_block')
     res = grow_mols_crem(mols, protein_xyz, max_mw=max_mw, max_rtb=max_rtb, max_logp=max_logp, max_tpsa=max_tpsa, ncpu=ncpu, **kwargs)
     return res
 
