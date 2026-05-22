@@ -21,6 +21,7 @@ from cremdock.scripts import plif
 
 sys.path.append(os.path.join(RDConfig.RDContribDir, 'SA_Score'))
 import sascorer
+import yaml
 
 
 def create_db(fname, args, args_to_save):
@@ -36,6 +37,18 @@ def create_db(fname, args, args_to_save):
     eadb.populate_setup_db(fname, args, args_to_save, ('protein', 'protein_setup'))
     with sqlite3.connect(fname, timeout=90) as conn:
         cur = conn.cursor()
+        cur.execute("ALTER TABLE setup ADD protein2 TEXT")
+        if getattr(args, 'config2', None):
+            with open(args.config2, 'r') as f:
+                config2_dict = yaml.safe_load(f)
+            protein2_path = config2_dict.get('protein')
+
+            if protein2_path:
+                with open(protein2_path, 'r') as f:
+                    protein2_content = f.read()
+                
+                cur.execute("UPDATE setup SET protein2 = ?", (protein2_content,))
+
         # cur.execute("PRAGMA journal_mode=WAL")
         cur.execute("ALTER TABLE mols ADD mol_block_2 TEXT")
         cur.execute("ALTER TABLE mols ADD iteration INTEGER")
@@ -55,7 +68,7 @@ def create_db(fname, args, args_to_save):
         conn.commit()
 
 
-def insert_starting_structures_to_db(fname, db_fname, prefix):
+def insert_starting_structures_to_db(fname, db_fname, prefix, fname2=None):
     """
 
     :param fname: SMILES or SDF with 3D coordinates
@@ -84,31 +97,63 @@ def insert_starting_structures_to_db(fname, db_fname, prefix):
         cols = ['id', 'iteration', 'smi', 'mw', 'rtb', 'logp', 'qed', 'tpsa', 'sa_score']
     elif fname.lower().endswith('.sdf'):
         make_docking = False
-        for i, mol in enumerate(Chem.SDMolSupplier(fname, removeHs=False)):
-            if mol:
-                name = mol.GetProp('_Name')
-                if not name:
-                    name = '000-' + str(i).zfill(6)
-                mol.SetProp('_Name', name + '_0')
-                mol = Chem.AddHs(mol, addCoords=True)
-                protected_user_canon_ids = None
-                if mol.HasProp('protected_user_ids'):
-                    # rdkit numeration starts with 0 and sdf numeration starts with 1
-                    protected_user_ids = [int(idx) - 1 for idx in mol.GetProp('protected_user_ids').split(',')]
-                    protected_user_canon_ids = ','.join(map(str, get_canon_for_atom_idx(mol, protected_user_ids)))
-                mol_mw, mol_rtb, mol_logp, mol_qed, mol_tpsa, mol_sa_score = calc_properties(mol)
-                data.append((f'{prefix}-{name}' if prefix else name,
-                             0,
-                             Chem.MolToSmiles(Chem.RemoveHs(mol), isomericSmiles=True),
-                             mol_mw,
-                             mol_rtb,
-                             mol_logp,
-                             mol_qed,
-                             mol_tpsa,
-                             mol_sa_score,
-                             Chem.MolToMolBlock(mol),
-                             protected_user_canon_ids))
-        cols = ['id', 'iteration', 'smi', 'mw', 'rtb', 'logp', 'qed', 'tpsa', 'sa_score', 'mol_block', 'protected_user_canon_ids']
+        if fname2 is None:
+            for i, mol in enumerate(Chem.SDMolSupplier(fname, removeHs=False)):
+                if mol:
+                    name = mol.GetProp('_Name')
+                    if not name:
+                        name = '000-' + str(i).zfill(6)
+                    mol.SetProp('_Name', name + '_0')
+                    mol = Chem.AddHs(mol, addCoords=True)
+                    protected_user_canon_ids = None
+                    if mol.HasProp('protected_user_ids'):
+                        # rdkit numeration starts with 0 and sdf numeration starts with 1
+                        protected_user_ids = [int(idx) - 1 for idx in mol.GetProp('protected_user_ids').split(',')]
+                        protected_user_canon_ids = ','.join(map(str, get_canon_for_atom_idx(mol, protected_user_ids)))
+                    mol_mw, mol_rtb, mol_logp, mol_qed, mol_tpsa, mol_sa_score = calc_properties(mol)     
+                    data.append((f'{prefix}-{name}' if prefix else name,
+                                0,
+                                Chem.MolToSmiles(Chem.RemoveHs(mol), isomericSmiles=True),
+                                mol_mw,
+                                mol_rtb,
+                                mol_logp,
+                                mol_qed,
+                                mol_tpsa,
+                                mol_sa_score,
+                                Chem.MolToMolBlock(mol),
+                                protected_user_canon_ids))
+            cols = ['id', 'iteration', 'smi', 'mw', 'rtb', 'logp', 'qed', 'tpsa', 'sa_score', 'mol_block', 'protected_user_canon_ids']
+        elif fname2.lower().endswith('.sdf'):
+            supp1  = Chem.SDMolSupplier(fname, removeHs=False)
+            supp2 = Chem.SDMolSupplier(fname2,removeHs=False )
+            for i,(mol1, mol2) in enumerate(zip(supp1, supp2)):
+                name = None
+                if mol1 and mol2:
+                    if Chem.MolToSmiles(mol1) == Chem.MolToSmiles(mol2):
+                        name = mol1.GetProp('_Name')
+                    if not name:
+                        name = '000-' + str(i).zfill(6)
+                    mol1.SetProp('_Name', name + '_0')
+                    mol1 = Chem.AddHs(mol1, addCoords=True)
+                    protected_user_canon_ids = None
+                    if mol1.HasProp('protected_user_ids'):
+                        # rdkit numeration starts with 0 and sdf numeration starts with 1
+                        protected_user_ids = [int(idx) - 1 for idx in mol1.GetProp('protected_user_ids').split(',')]
+                        protected_user_canon_ids = ','.join(map(str, get_canon_for_atom_idx(mol1, protected_user_ids)))
+                    mol_mw, mol_rtb, mol_logp, mol_qed, mol_tpsa, mol_sa_score = calc_properties(mol1)     
+                    data.append((f'{prefix}-{name}' if prefix else name,
+                                0,
+                                Chem.MolToSmiles(Chem.RemoveHs(mol1), isomericSmiles=True),
+                                mol_mw,
+                                mol_rtb,
+                                mol_logp,
+                                mol_qed,
+                                mol_tpsa,
+                                mol_sa_score,
+                                Chem.MolToMolBlock(mol1),
+                                Chem.MolToMolBlock(mol2),
+                                protected_user_canon_ids))
+            cols = ['id', 'iteration', 'smi', 'mw', 'rtb', 'logp', 'qed', 'tpsa', 'sa_score', 'mol_block', 'mol_block_2', 'protected_user_canon_ids']
     else:
         raise ValueError('input file with fragments has unrecognizable extension. '
                          'Only SMI, SMILES and SDF are allowed.')
@@ -179,10 +224,12 @@ def update_plif(conn, cur, iteration, docked_mol_ids, ncpu, plif_ref, plif_prote
     pool = Pool(ncpu)
     try:
         ref_df = pd.DataFrame(data={item: True for item in plif_ref}, index=['reference'])
+        results = []
         for i, (mol_id, sim) in enumerate(pool.imap_unordered(partial(plif.plif_similarity,
                                                                         plif_protein_fname=plif_protein_fname,
                                                                         plif_ref_df=ref_df),
                                                                 mols), 1):
+            results.append((sim, mol_id))
             cur.execute(f"""UPDATE mols
                                 SET 
                                     {db_col} = ? 
@@ -303,7 +350,7 @@ def get_mols(conn, mol_ids, mol_block_col):
     :return:
     """
     cur = conn.cursor()
-    sql = f'SELECT id, {mol_block_col}, protected_user_canon_ids FROM mols WHERE id IN (?) AND {mol_block_col} IS NOT NULL'
+    sql = f'SELECT id, {mol_block_col}, protected_user_canon_ids, mol_block_2 FROM mols WHERE id IN (?) AND {mol_block_col} IS NOT NULL'
 
     mols = []
     for items in eadb.select_from_db(cur, sql, mol_ids):
@@ -314,6 +361,8 @@ def get_mols(conn, mol_ids, mol_block_col):
             continue
         if len(items) > 2 and items[2] is not None:
             m.SetProp('protected_user_canon_ids', items[2])
+        if len(items) > 3 and items[3] is not None:
+            m.SetProp('mol_block_2', items[3])
         mol_id, stereo_id = mol_name_split(m.GetProp('_Name'))
         m.SetProp('_Name', mol_id)
         mols.append(m)
@@ -350,3 +399,13 @@ def get_protein_heavy_atom_xyz(dbname):
         cur.execute("SELECT protein FROM setup")
         pdb_block = cur.fetchone()[0]
         return get_protein_heavy_atoms_xyz_from_string(pdb_block)
+
+def get_protein2_heavy_atom_xyz(dbname):
+    with sqlite3.connect(dbname, timeout=90) as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT protein2 FROM setup")
+        pdb_block = cur.fetchone()[0]
+        if pdb_block is None:
+            raise ValueError("protein2 not found")
+        return get_protein_heavy_atoms_xyz_from_string(pdb_block)
+        

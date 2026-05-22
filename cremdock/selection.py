@@ -21,7 +21,7 @@ from cremdock.molecules import get_mol_ids, neutralize_atoms
 sys.path.append(os.path.join(RDConfig.RDContribDir, 'SA_Score'))
 import sascorer
 
-def selection_and_grow_greedy(mols, conn, protein_xyz, max_mw, max_rtb, max_logp, max_tpsa, ntop, ranking_func, ncpu=1,
+def selection_and_grow_greedy(mols, conn, protein_xyz, max_mw, max_rtb, max_logp, max_tpsa, ntop, ranking_func,protein_xyz2=None, ncpu=1,
                               **kwargs):
     """
 
@@ -41,13 +41,13 @@ def selection_and_grow_greedy(mols, conn, protein_xyz, max_mw, max_rtb, max_logp
     if len(mols) == 0:
         return []
     selected_mols = select_top_mols(mols, conn, ntop, ranking_func)
-    res = grow_mols_crem(selected_mols, protein_xyz, max_mw=max_mw, max_rtb=max_rtb, max_logp=max_logp, max_tpsa=max_tpsa,
+    res = grow_mols_crem(selected_mols, protein_xyz, max_mw=max_mw, max_rtb=max_rtb, max_logp=max_logp, max_tpsa=max_tpsa, protein_xyz2=protein_xyz2,
                          ncpu=ncpu, **kwargs)
     return res
 
 
 def selection_and_grow_clust(mols, conn, nclust, protein_xyz, max_mw, max_rtb, max_logp, max_tpsa, ntop,
-                             ranking_func, use_murcko=False, ncpu=1, **kwargs):
+                             ranking_func,protein_xyz2=None, use_murcko=False, ncpu=1, **kwargs):
     """
 
     :param mols:
@@ -76,13 +76,13 @@ def selection_and_grow_clust(mols, conn, nclust, protein_xyz, max_mw, max_rtb, m
     for cluster in sorted_clusters:
         for i in cluster[:ntop]:
             selected_mols.append(mol_dict[i])
-    res = grow_mols_crem(selected_mols, protein_xyz, max_mw=max_mw, max_rtb=max_rtb, max_logp=max_logp, max_tpsa=max_tpsa,
+    res = grow_mols_crem(selected_mols, protein_xyz, max_mw=max_mw, max_rtb=max_rtb, max_logp=max_logp, max_tpsa=max_tpsa, protein_xyz2=protein_xyz2,
                          ncpu=ncpu, **kwargs)
     return res
 
 
 def selection_and_grow_clust_deep(mols, conn, nclust, protein_xyz, max_mw, max_rtb, max_logp, max_tpsa, ntop,
-                                  ranking_func, use_murcko=False, ncpu=1, **kwargs):
+                                  ranking_func,protein_xyz2=None, use_murcko=False, ncpu=1, **kwargs):
     """
 
     :param mols:
@@ -113,7 +113,7 @@ def selection_and_grow_clust_deep(mols, conn, nclust, protein_xyz, max_mw, max_r
         processed_mols = 0
         for mol_id in cluster:
             tmp = grow_mol_crem(mol_dict[mol_id], protein_xyz, max_mw=max_mw, max_rtb=max_rtb, max_logp=max_logp,
-                                max_tpsa=max_tpsa, ncpu=ncpu, **kwargs)
+                                max_tpsa=max_tpsa,protein_xyz2=protein_xyz2, ncpu=ncpu, **kwargs)
             if tmp:
                 res[mol_dict[mol_id]] = tmp
                 processed_mols += 1
@@ -142,7 +142,7 @@ def identify_pareto(df):
 
 
 def selection_and_grow_pareto(mols, conn, max_mw, max_rtb, max_logp, max_tpsa, protein_xyz, ranking_func,
-                              pareto_property, ncpu, **kwargs):
+                              pareto_property, ncpu,protein_xyz2=None, **kwargs):
     """
 
     :param mols:
@@ -169,7 +169,7 @@ def selection_and_grow_pareto(mols, conn, max_mw, max_rtb, max_logp, max_tpsa, p
     scores = ranking_func(conn, mol_ids)
     pareto_mol_ids = get_pareto_front(mol_dict, scores, parameter=pareto_property, ncpu=ncpu)
     mols = get_mols(conn, pareto_mol_ids, mol_block_col='mol_block')
-    res = grow_mols_crem(mols, protein_xyz, max_mw=max_mw, max_rtb=max_rtb, max_logp=max_logp, max_tpsa=max_tpsa, ncpu=ncpu, **kwargs)
+    res = grow_mols_crem(mols, protein_xyz, max_mw=max_mw, max_rtb=max_rtb, max_logp=max_logp, max_tpsa=max_tpsa, protein_xyz2=protein_xyz2, ncpu=ncpu, **kwargs)
     return res
 
 

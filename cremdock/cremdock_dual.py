@@ -17,7 +17,7 @@ from cremdock import database
 from cremdock import user_protected_atoms
 from cremdock.arg_types import cpu_type, filepath_type, similarity_value_type, str_lower_type
 from cremdock.crem_grow import grow_mols_crem
-from cremdock.database import get_protein_heavy_atom_xyz
+from cremdock.database import get_protein_heavy_atom_xyz, get_protein2_heavy_atom_xyz
 from cremdock.molecules import get_major_tautomer
 from cremdock.ranking import ranking_score
 from cremdock.selection import selection_and_grow_greedy, selection_and_grow_clust, selection_and_grow_clust_deep, \
@@ -55,6 +55,7 @@ def make_iteration(dbname, config,config2,  mol_dock_func, priority_func, ntop, 
     with sqlite3.connect(dbname, timeout=90) as conn:
         logging.debug(f'iteration {iteration}, make_docking={make_docking}')
         protein_xyz = get_protein_heavy_atom_xyz(dbname)
+        protein_xyz2 = get_protein2_heavy_atom_xyz(dbname)
         if make_docking:
             if protonation:
                 logging.debug(f'iteration {iteration}, start protonation')
@@ -99,6 +100,8 @@ def make_iteration(dbname, config,config2,  mol_dock_func, priority_func, ntop, 
                     combined_res['mol_block_2'] = r2.get('mol_block')
                     
                     eadb.update_db(conn, mol_id, combined_res)
+                if r1 and not r2:
+                    logging.warning(f'{mol_id}: protein 2 docking failed, skipping')
             logging.debug(f'iteration {iteration}, end docking')
             conn.commit()
 
@@ -134,20 +137,20 @@ def make_iteration(dbname, config,config2,  mol_dock_func, priority_func, ntop, 
                 if alg_type == 1:
                     res = selection_and_grow_greedy(mols=mols, conn=conn, protein_xyz=protein_xyz,
                                                     ntop=ntop, max_mw=mw, max_rtb=rtb, max_logp=logp, max_tpsa=tpsa,
-                                                    ranking_func=ranking_score_func, ncpu=ncpu, **kwargs)
+                                                    ranking_func=ranking_score_func,protein_xyz2=protein_xyz2, ncpu=ncpu, **kwargs)
                 elif alg_type in [2, 3, 6] and len(mols) <= nclust:  # if number of mols is lower than nclust grow all mols
                     res = grow_mols_crem(mols=mols, protein_xyz=protein_xyz, max_mw=mw, max_rtb=rtb, max_logp=logp,
-                                         max_tpsa=tpsa, ncpu=ncpu, **kwargs)
+                                         max_tpsa=tpsa,protein_xyz2=protein_xyz2, ncpu=ncpu, **kwargs)
                 elif alg_type in [2, 6]:
                     use_murcko = True if alg_type == 6 else False
                     res = selection_and_grow_clust_deep(mols=mols, conn=conn, nclust=nclust, protein_xyz=protein_xyz,
                                                         ntop=ntop, max_mw=mw, max_rtb=rtb, max_logp=logp, max_tpsa=tpsa,
-                                                        ranking_func=ranking_score_func, use_murcko=use_murcko,
+                                                        ranking_func=ranking_score_func, protein_xyz2=protein_xyz2, use_murcko=use_murcko,
                                                         ncpu=ncpu, **kwargs)
                 elif alg_type == 3:
                     res = selection_and_grow_clust(mols=mols, conn=conn, nclust=nclust, protein_xyz=protein_xyz,
                                                    ntop=ntop, max_mw=mw, max_rtb=rtb, max_logp=logp, max_tpsa=tpsa,
-                                                   ranking_func=ranking_score_func, ncpu=ncpu, **kwargs)
+                                                   ranking_func=ranking_score_func, protein_xyz2=protein_xyz2, ncpu=ncpu, **kwargs)
                 elif alg_type in [4, 5]:
                     if alg_type == 4:
                         pareto_property = 'mw'
@@ -156,14 +159,14 @@ def make_iteration(dbname, config,config2,  mol_dock_func, priority_func, ntop, 
                     res = selection_and_grow_pareto(mols=mols, conn=conn, max_mw=mw, max_rtb=rtb, max_logp=logp,
                                                     max_tpsa=tpsa, protein_xyz=protein_xyz,
                                                     ranking_func=ranking_score_func, pareto_property=pareto_property,
-                                                    ncpu=ncpu, **kwargs)
+                                                    ncpu=ncpu, protein_xyz2=protein_xyz2, **kwargs)
                 logging.debug(f'iteration {iteration}, end selection and growing')
 
         else:
             logging.debug(f'iteration {iteration}, docking was omitted, all mols are grown')
-            mols = database.get_mols(conn, database.get_docked_mol_ids(conn, iteration))
+            mols = database.get_mols(conn, database.get_docked_mol_ids(conn, iteration), mol_block_col='mol_block')
             res = grow_mols_crem(mols=mols, protein_xyz=protein_xyz, max_mw=mw, max_rtb=rtb, max_logp=logp, max_tpsa=tpsa,
-                                 ncpu=ncpu, **kwargs)
+                                 protein_xyz2=protein_xyz2,ncpu=ncpu, **kwargs)
             logging.debug(f'iteration {iteration}, docking was omitted, all mols were grown')
 
         logging.info(f'iteration {iteration}, number of mols after growing: {sum(len(v)for v in res.values()) if res else 0}')
@@ -216,6 +219,8 @@ def entry_point():
                              'these atoms will be protected from growing. This argument can be omitted if an existed '
                              'output DB is specified, then docking will be continued from the last successful '
                              'iteration. Optional.')
+    group1.add_argument('-i2','--input_frags2', metavar='FILENAME', required=False, type=filepath_type, 
+                        help='use only for a second sdf file of the same ligand with different docking. No need to redefine protected_ids' )
     group1.add_argument('-o', '--output', metavar='FILENAME', required=True, type=filepath_type,
                         help='SQLite DB with docking results. If an existed DB was supplied input fragments will be '
                              'ignored if any and the program will continue docking from the last successful iteration.')
@@ -385,8 +390,8 @@ def entry_point():
         make_docking = True
 
     else:
-        database.create_db(args.output, args, args_to_save=['plif_protein'])
-        make_docking = database.insert_starting_structures_to_db(args.input_frags, args.output, args.prefix)
+        database.create_db(args.output, args, args_to_save=['plif_protein', 'plif_protein2'])
+        make_docking = database.insert_starting_structures_to_db(args.input_frags, args.output, args.prefix, args.input_frags2)
 
     if args.search in [2, 3] and (args.nclust * args.ntop > 20):
         logging.warning('The number of clusters (nclust) and top scored molecules selected from each cluster (ntop) '
