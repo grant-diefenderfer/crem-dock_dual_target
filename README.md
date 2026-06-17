@@ -164,6 +164,7 @@ sqlite3 -header -separator " " mode1_1.db "select smi, id, docking_score from mo
 BSD-3
 
 ## Citation
-CReM-dock: de novo design of synthetically feasible compounds guided by molecular docking  
-Guzel Minibaeva, Pavel Polishchuk  
-https://doi.org/10.26434/chemrxiv-2024-fpzqb-v2
+CReM-dock: de novo design of synthetically feasible structures guided by molecular docking  
+Minibaeva, G.; Du, H.; Clark, F.; Michel, J.; Polishchuk, P.   
+*Digital Discovery* **2026**, 5, 2271-2291.
+https://doi.org/10.1039/D6DD00131A
