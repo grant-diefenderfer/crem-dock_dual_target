@@ -74,18 +74,20 @@ def make_iteration(dbname, config,config2,  mol_dock_func, priority_func, ntop, 
                                      ncpu=ncpu,
                                      dask_client=dask_client,
                                      ring_sample=ring_sample))
-
-            res2_dict = dict(docking(mols_list,
+            if config2 is not None:
+                res2_dict = dict(docking(mols_list,
                                      dock_func=mol_dock_func,
                                      dock_config=config2,
                                      priority_func=priority_func,
                                      ncpu=ncpu,
                                      dask_client=dask_client,
                                      ring_sample=ring_sample))
+            else:
+                res2_dict = {}
 
             for mol_id in res1_dict.keys():
                 r1 = res1_dict.get(mol_id)
-                r2 = res2_dict.get(mol_id)
+                r2 = res2_dict.get(mol_id) if res2_dict else None
                 
                 if r1 and r2:
                     combined_res = r1.copy() 
@@ -101,7 +103,10 @@ def make_iteration(dbname, config,config2,  mol_dock_func, priority_func, ntop, 
                     
                     eadb.update_db(conn, mol_id, combined_res)
                 if r1 and not r2:
-                    logging.warning(f'{mol_id}: protein 2 docking failed, skipping')
+                    score1 = r1.get('docking_score', 0)
+                    r1['docking_score'] = score1
+                    eadb.update_db(conn, mol_id, r1)
+
             logging.debug(f'iteration {iteration}, end docking')
             conn.commit()
 
@@ -321,7 +326,7 @@ def entry_point():
     group5.add_argument('--program', default='vina', required=False, choices=['vina', 'gnina', 'vina-gpu', 'qvina'],
                         help='name of a docking program.')
     group5.add_argument('--config', metavar='FILENAME', required=False,
-                        help='YAML file with parameters used by docking program for second protein.\n'
+                        help='YAML file with parameters used by docking program for first protein.\n'
                              'vina.yml\n'
                              'protein: path to pdbqt file with a protein\n'
                              'protein_setup: path to a text file with coordinates of a binding site\n'
@@ -330,7 +335,7 @@ def entry_point():
                              'seed: -1\n'
                              'gnina.yml\n')
     group5.add_argument('--config2', metavar='FILENAME', required=False,
-                        help='YAML file with parameters used by docking program.\n'
+                        help='YAML file with parameters used by docking program for second protein.\n'
                              'vina.yml\n'
                              'protein: path to pdbqt file with a protein\n'
                              'protein_setup: path to a text file with coordinates of a binding site\n'

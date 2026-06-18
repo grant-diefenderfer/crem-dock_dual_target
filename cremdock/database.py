@@ -406,6 +406,6 @@ def get_protein2_heavy_atom_xyz(dbname):
         cur.execute("SELECT protein2 FROM setup")
         pdb_block = cur.fetchone()[0]
         if pdb_block is None:
-            raise ValueError("protein2 not found")
+            return None
         return get_protein_heavy_atoms_xyz_from_string(pdb_block)
         
