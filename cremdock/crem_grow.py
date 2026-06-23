@@ -98,7 +98,7 @@ def get_protein_heavy_atoms_xyz_from_string(pdb_block):
     return xyz
 
 
-def grow_mol_crem(mol, protein_xyz, max_mw, max_rtb, max_logp, max_tpsa, protein_xyz2=None, h_dist_threshold=2, ncpu=1, **kwargs):
+def grow_mol_crem(mol, protein_xyz, max_mw, max_rtb, max_logp, max_tpsa, protein_xyz2=None, h_dist_threshold=2, ncpu=1,seed=None, **kwargs):
     mol_0 = neutralize_atoms(mol)  # add neutralize_atoms to calc correct logp and tpsa
     mw = max_mw - Chem.Descriptors.MolWt(mol_0)
     if mw <= 0:
@@ -140,7 +140,7 @@ def grow_mol_crem(mol, protein_xyz, max_mw, max_rtb, max_logp, max_tpsa, protein
     logging.debug(f'num free attachment points: {mol.GetNumAtoms() - len(protected_ids)}')
     try:
         res = list(grow_mol(mol, protected_ids=protected_ids, return_rxn=False, return_mol=True, ncores=ncpu,
-                            symmetry_fixes=True, mw=(1, mw), rtb=(0, rtb), logp=(-100, logp), tpsa=(0, tpsa), **kwargs))
+                            symmetry_fixes=True, mw=(1, mw), rtb=(0, rtb), logp=(-100, logp), tpsa=(0, tpsa),seed=seed, **kwargs))
 
     except Exception as e:
         logging.error(f'grow error, {mol.GetProp("_Name")} {Chem.MolToSmiles(mol)}, {e}',
@@ -152,7 +152,7 @@ def grow_mol_crem(mol, protein_xyz, max_mw, max_rtb, max_logp, max_tpsa, protein
     return res
 
 
-def grow_mols_crem(mols, protein_xyz, max_mw, max_rtb, max_logp, max_tpsa,protein_xyz2=None, h_dist_threshold=2, ncpu=1, **kwargs):
+def grow_mols_crem(mols, protein_xyz, max_mw, max_rtb, max_logp, max_tpsa,protein_xyz2=None, h_dist_threshold=2, ncpu=1,seed=None, **kwargs):
     """
 
     :param mols: list of molecules
@@ -169,7 +169,7 @@ def grow_mols_crem(mols, protein_xyz, max_mw, max_rtb, max_logp, max_tpsa,protei
     res = dict()
     for mol in mols:
         tmp = grow_mol_crem(mol, protein_xyz, max_mw=max_mw, max_rtb=max_rtb, max_logp=max_logp, max_tpsa=max_tpsa,
-                            protein_xyz2=protein_xyz2, h_dist_threshold=h_dist_threshold, ncpu=ncpu, **kwargs)
+                            protein_xyz2=protein_xyz2, h_dist_threshold=h_dist_threshold, ncpu=ncpu,seed=seed **kwargs)
         if tmp:
             res[mol] = tmp
     return res

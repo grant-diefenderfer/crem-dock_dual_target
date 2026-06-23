@@ -45,7 +45,7 @@ def supply_parent_child_mols(d):
 def make_iteration(dbname, config,config2,  mol_dock_func, priority_func, ntop, nclust, mw, rmsd, rtb, logp, tpsa,
                    alg_type, ranking_score_func, ncpu, protonation, ring_sample, make_docking=True, tautomerize=False,
                    dask_client=None, plif_list=None, plif_protein=None,plif_list2=None, plif_protein2=None, plif_cutoff=1,plif_cutoff2=1,  prefix=None,
-                   n_iterations=None, **kwargs):
+                   n_iterations=None,seed=None,**kwargs):
     iteration = database.get_last_iter_from_db(dbname)
     if n_iterations and n_iterations == iteration:
         final_iteration = True
@@ -142,20 +142,20 @@ def make_iteration(dbname, config,config2,  mol_dock_func, priority_func, ntop, 
                 if alg_type == 1:
                     res = selection_and_grow_greedy(mols=mols, conn=conn, protein_xyz=protein_xyz,
                                                     ntop=ntop, max_mw=mw, max_rtb=rtb, max_logp=logp, max_tpsa=tpsa,
-                                                    ranking_func=ranking_score_func,protein_xyz2=protein_xyz2, ncpu=ncpu, **kwargs)
+                                                    ranking_func=ranking_score_func,protein_xyz2=protein_xyz2, ncpu=ncpu,seed=seed, **kwargs)
                 elif alg_type in [2, 3, 6] and len(mols) <= nclust:  # if number of mols is lower than nclust grow all mols
                     res = grow_mols_crem(mols=mols, protein_xyz=protein_xyz, max_mw=mw, max_rtb=rtb, max_logp=logp,
-                                         max_tpsa=tpsa,protein_xyz2=protein_xyz2, ncpu=ncpu, **kwargs)
+                                         max_tpsa=tpsa,protein_xyz2=protein_xyz2, ncpu=ncpu,seed=seed, **kwargs)
                 elif alg_type in [2, 6]:
                     use_murcko = True if alg_type == 6 else False
                     res = selection_and_grow_clust_deep(mols=mols, conn=conn, nclust=nclust, protein_xyz=protein_xyz,
                                                         ntop=ntop, max_mw=mw, max_rtb=rtb, max_logp=logp, max_tpsa=tpsa,
                                                         ranking_func=ranking_score_func, protein_xyz2=protein_xyz2, use_murcko=use_murcko,
-                                                        ncpu=ncpu, **kwargs)
+                                                        ncpu=ncpu,seed=seed, **kwargs)
                 elif alg_type == 3:
                     res = selection_and_grow_clust(mols=mols, conn=conn, nclust=nclust, protein_xyz=protein_xyz,
                                                    ntop=ntop, max_mw=mw, max_rtb=rtb, max_logp=logp, max_tpsa=tpsa,
-                                                   ranking_func=ranking_score_func, protein_xyz2=protein_xyz2, ncpu=ncpu, **kwargs)
+                                                   ranking_func=ranking_score_func, protein_xyz2=protein_xyz2, ncpu=ncpu,seed=seed, **kwargs)
                 elif alg_type in [4, 5]:
                     if alg_type == 4:
                         pareto_property = 'mw'
@@ -164,14 +164,14 @@ def make_iteration(dbname, config,config2,  mol_dock_func, priority_func, ntop, 
                     res = selection_and_grow_pareto(mols=mols, conn=conn, max_mw=mw, max_rtb=rtb, max_logp=logp,
                                                     max_tpsa=tpsa, protein_xyz=protein_xyz,
                                                     ranking_func=ranking_score_func, pareto_property=pareto_property,
-                                                    ncpu=ncpu, protein_xyz2=protein_xyz2, **kwargs)
+                                                    ncpu=ncpu, protein_xyz2=protein_xyz2,seed=seed, **kwargs)
                 logging.debug(f'iteration {iteration}, end selection and growing')
 
         else:
             logging.debug(f'iteration {iteration}, docking was omitted, all mols are grown')
             mols = database.get_mols(conn, database.get_docked_mol_ids(conn, iteration), mol_block_col='mol_block')
             res = grow_mols_crem(mols=mols, protein_xyz=protein_xyz, max_mw=mw, max_rtb=rtb, max_logp=logp, max_tpsa=tpsa,
-                                 protein_xyz2=protein_xyz2,ncpu=ncpu, **kwargs)
+                                 protein_xyz2=protein_xyz2,ncpu=ncpu,seed=seed, **kwargs)
             logging.debug(f'iteration {iteration}, docking was omitted, all mols were grown')
 
         logging.info(f'iteration {iteration}, number of mols after growing: {sum(len(v)for v in res.values()) if res else 0}')
@@ -283,6 +283,8 @@ def entry_point():
     group2.add_argument('--set_names', metavar='SET NAMES', type=str, nargs='*', default=None, required=False,
                         help='column name(s) in radius tables (v1 database only) defining the set(s) of fragments. '
                              'If None (default), all available set columns are used. Ignored for v0 databases.')
+    group2.add_argument('--seed', metavar='INTEGER', default=None, type=int, required=False, 
+                        help='specify seed to be used for fragment database selction. Default is none')
 
     group4 = parser.add_argument_group('Filters')
     group4.add_argument('--rmsd', metavar='NUMERIC', type=float, default=None, required=False,
@@ -365,6 +367,7 @@ def entry_point():
                              'which will be analyzed together.')
     group7.add_argument('-c', '--ncpu', metavar='INTEGER', default=1, type=cpu_type,
                         help='number of cpus.')
+    
 
     Chem.SetDefaultPickleProperties(Chem.PropertyPickleOptions.AllProps)
 
@@ -449,7 +452,7 @@ def entry_point():
                                             min_freq=args.min_freq, min_atoms=args.min_atoms, max_atoms=args.max_atoms,
                                             max_replacements=args.max_replacements, sample_func=sample_func,
                                             filter_func=filter_func, set_names=args.set_names, tautomerize=args.tautomerize,
-                                            n_iterations=args.n_iterations)
+                                            n_iterations=args.n_iterations, seed=args.seed)
             make_docking = True
 
             if not res:
