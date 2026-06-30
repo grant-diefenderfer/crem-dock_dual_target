@@ -15,7 +15,7 @@ def get_isomers(mol):
     try:
         isomers = tuple(EnumerateStereoisomers(mol, options=opts))
     except RuntimeError:
-        for bond in mol[1].GetBonds():
+        for bond in mol.GetBonds():
             if bond.GetStereo() == Chem.BondStereo.STEREOANY:
                 bond.SetStereo(Chem.rdchem.BondStereo.STEREONONE)
         isomers = tuple(EnumerateStereoisomers(mol, options=opts))
