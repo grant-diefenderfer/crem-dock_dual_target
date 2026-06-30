@@ -51,8 +51,8 @@ def filter_by_plif(mols, plif_ref, protein_fname, threshold=1):
     df.columns = ['.'.join(item.strip().lower() for item in items[1:]) for items in df.columns]
     df.index = [mol.GetProp('_Name') for mol in mols]
     ref_df = pd.DataFrame(data={item: True for item in plif_ref}, index=['reference'])
-   # with pd.option_context("future.no_silent_downcasting", True):
-    df = pd.concat([ref_df, df]).fillna(False).astype(bool)
+    with pd.option_context("future.no_silent_downcasting", True):
+        df = pd.concat([ref_df, df]).fillna(False).astype(bool)
     b = plf.to_bitvectors(df)
     res = DataStructs.BulkTverskySimilarity(b[0], b[1:], 1, 0)
     mols = [mol for mol, v in zip(mols, res) if v >= threshold]
@@ -74,19 +74,12 @@ def plif_similarity(mol, plif_protein_fname, plif_ref_df, ncpu=1):
     plf_prot = plf.Molecule(Chem.MolFromPDBFile(plif_protein_fname, removeHs=False, sanitize=False))
     fp = plf.Fingerprint(['Hydrophobic', 'HBDonor', 'HBAcceptor', 'Anionic', 'Cationic', 'CationPi', 'PiCation',
                           'FaceToFace', 'EdgeToFace', 'MetalAcceptor'])
-    plf_mol = plf.Molecule.from_rdkit(mol)
-    fp.run_from_iterable([plf_mol], plf_prot, n_jobs=ncpu)
+    fp.run_from_iterable([plf.Molecule.from_rdkit(mol)], plf_prot, n_jobs=ncpu)
     df = fp.to_dataframe()
-
-    if df.empty or df.shape[1] == 0:
-        return mol.GetProp('_Name'), 0.0
-
-    df.columns = [items[1].strip().lower() + '.' + ''.join(item.strip().lower() for item in items[2:])
-                  for items in df.columns]
-    df = pd.concat([plif_ref_df, df]).fillna(False).astype(bool)
+    df.columns = ['.'.join(item.strip().lower() for item in items[1:]) for items in df.columns]
+    with pd.option_context("future.no_silent_downcasting", True):
+        df = pd.concat([plif_ref_df, df]).fillna(False).astype(bool)
     b = plf.to_bitvectors(df)
-    if len(b) < 2:
-        return mol.GetProp('_Name'), 0.0
     sim = DataStructs.TverskySimilarity(b[0], b[1], 1, 0)
     return mol.GetProp('_Name'), round(sim, 3)
 
@@ -108,8 +101,8 @@ def calc_plif(mols, protein_fname, sanitize_protein, plif_ref_df=None, ncpu=1):
     df = fp.to_dataframe()
     df.columns = ['.'.join(item.strip().lower() for item in items[1:]) for items in df.columns]
     if plif_ref_df is not None:
-       # with pd.option_context("future.no_silent_downcasting", True):
-        df = pd.concat([plif_ref_df, df]).fillna(False).astype(bool)
+        with pd.option_context("future.no_silent_downcasting", True):
+            df = pd.concat([plif_ref_df, df]).fillna(False).astype(bool)
         b = plf.to_bitvectors(df)
         sim = DataStructs.BulkTverskySimilarity(b[0], b[1:], 1, 0)
         sim = [round(x, 3) for x in sim]

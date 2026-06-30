@@ -169,7 +169,7 @@ def grow_mols_crem(mols, protein_xyz, max_mw, max_rtb, max_logp, max_tpsa,protei
     res = dict()
     for mol in mols:
         tmp = grow_mol_crem(mol, protein_xyz, max_mw=max_mw, max_rtb=max_rtb, max_logp=max_logp, max_tpsa=max_tpsa,
-                            protein_xyz2=protein_xyz2, h_dist_threshold=h_dist_threshold, ncpu=ncpu,seed=seed **kwargs)
+                            protein_xyz2=protein_xyz2, h_dist_threshold=h_dist_threshold, ncpu=ncpu,seed=seed, **kwargs)
         if tmp:
             res[mol] = tmp
     return res
