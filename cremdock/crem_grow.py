@@ -140,7 +140,7 @@ def grow_mol_crem(mol, protein_xyz, max_mw, max_rtb, max_logp, max_tpsa, protein
     logging.debug(f'num free attachment points: {mol.GetNumAtoms() - len(protected_ids)}')
     try:
         res = list(grow_mol(mol, protected_ids=protected_ids, return_rxn=False, return_mol=True, ncores=ncpu,
-                            symmetry_fixes=True, mw=(1, mw), rtb=(0, rtb), logp=(-100, logp), tpsa=(0, tpsa),seed=seed, **kwargs))
+                            symmetry_fixes=True, mw=(1, mw), rtb=(0, rtb), logp=(-100, logp), tpsa=(0, tpsa), **kwargs))
 
     except Exception as e:
         logging.error(f'grow error, {mol.GetProp("_Name")} {Chem.MolToSmiles(mol)}, {e}',

@@ -129,8 +129,8 @@ def calc_plif_mp(protein_fname, ligand_fname, sanitize_protein, plif_list=None, 
             plif_ref_df = None
 
         df = list(p.imap(partial(calc_plif, protein_fname=protein_fname, sanitize_protein=sanitize_protein, plif_ref_df=plif_ref_df), chunks))
-        #with pd.option_context("future.no_silent_downcasting", True):
-        df = pd.concat(df).fillna(False).astype(float)
+        with pd.option_context("future.no_silent_downcasting", True):
+            df = pd.concat(df).fillna(False).astype(float)
         if plif_list is None:
             df = df.reindex(sorted(df.columns), axis=1)
     finally:

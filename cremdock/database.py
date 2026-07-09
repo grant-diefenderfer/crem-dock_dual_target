@@ -301,7 +301,8 @@ def get_docked_mol_data(conn, iteration):
     cur = conn.cursor()
     res = tuple(cur.execute(f"SELECT id, rmsd, plif_sim, plif_sim2 "
                             f"FROM mols "
-                            f"WHERE iteration = '{iteration}' AND mol_block IS NOT NULL"))
+                            f"WHERE iteration = '{iteration}' AND mol_block IS NOT NULL "
+                            f"ORDER BY id"))
     df = pd.DataFrame(res, columns=['id', 'rmsd', 'plif_sim', 'plif_sim2']).set_index('id')
     return df
 
@@ -314,7 +315,7 @@ def get_docked_mol_ids(conn, iteration):
     :return:
     """
     cur = conn.cursor()
-    res = cur.execute(f"SELECT id FROM mols WHERE iteration = '{iteration}' AND mol_block IS NOT NULL")  # TODO: use docking_score instead of mol_block
+    res = cur.execute(f"SELECT id FROM mols WHERE iteration = '{iteration}' AND mol_block IS NOT NULL ORDER BY id")  # TODO: use docking_score instead of mol_block
     return [i[0] for i in res]
 
 
@@ -366,6 +367,7 @@ def get_mols(conn, mol_ids, mol_block_col):
         mol_id, stereo_id = mol_name_split(m.GetProp('_Name'))
         m.SetProp('_Name', mol_id)
         mols.append(m)
+    mols.sort(key=lambda m: m.GetProp('_Name'))
     cur.close()
     return mols
 
