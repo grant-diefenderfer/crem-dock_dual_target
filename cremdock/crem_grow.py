@@ -69,7 +69,7 @@ def get_protected_ids(mol, protein_xyz, dist_threshold, mol2=None, protein_xyz2=
                 # only consider protection if there are hydrogens to protect in the corresponding model
                 prot1 = not (mol_h_neighbors - ids) if mol_h_neighbors else False
                 prot2 = not (mol2_h_neighbors - ids2) if mol2_h_neighbors else False
-                if prot1 or prot2:
+                if prot1 and prot2:
                     output_ids.append(a.GetIdx())
             else:
                 if mol_h_neighbors and not (mol_h_neighbors - ids):

@@ -62,6 +62,8 @@ def create_db(fname, args, args_to_save):
         cur.execute("ALTER TABLE mols ADD rmsd REAL")
         cur.execute("ALTER TABLE mols ADD plif_sim REAL")
         cur.execute("ALTER TABLE mols ADD plif_sim2 REAL")
+        cur.execute("ALTER TABLE mols ADD plif_contacts TEXT")
+        cur.execute("ALTER TABLE mols ADD plif_contacts2 TEXT")
         cur.execute("ALTER TABLE mols ADD protected_user_canon_ids TEXT DEFAULT NULL")
         cur.execute("ALTER TABLE mols ADD docking_score_1 REAL")
         cur.execute("ALTER TABLE mols ADD docking_score_2 REAL")
@@ -206,11 +208,11 @@ def update_db(conn, iteration, plif_ref=None, plif_protein_fname=None,plif_ref2=
     
 
     if plif_ref is not None:
-        update_plif(conn, cur, iteration, docked_mol_ids, ncpu, plif_ref, plif_protein_fname, db_col="plif_sim", mol_block_call="mol_block")
+        update_plif(conn, cur, iteration, docked_mol_ids, ncpu, plif_ref, plif_protein_fname, db_col="plif_sim",contact_col="plif_contacts", mol_block_call="mol_block")
     if plif_ref2 is not None:
-        update_plif(conn, cur, iteration, docked_mol_ids, ncpu, plif_ref2, plif_protein_fname2, db_col="plif_sim2", mol_block_call="mol_block_2")
+        update_plif(conn, cur, iteration, docked_mol_ids, ncpu, plif_ref2, plif_protein_fname2, db_col="plif_sim2",contact_col="plif_contacts2", mol_block_call="mol_block_2")
 
-def update_plif(conn, cur, iteration, docked_mol_ids, ncpu, plif_ref, plif_protein_fname, db_col, mol_block_call):
+def update_plif(conn, cur, iteration, docked_mol_ids, ncpu, plif_ref, plif_protein_fname, db_col,contact_col, mol_block_call):
     sql = f"SELECT id FROM mols WHERE iteration = {iteration} AND {db_col} IS NULL"
     plif_null_mol_ids = [i[0] for i in cur.execute(sql).fetchall()]
     mols = get_mols(conn, set(docked_mol_ids) & set(plif_null_mol_ids), mol_block_col=mol_block_call)
@@ -225,17 +227,18 @@ def update_plif(conn, cur, iteration, docked_mol_ids, ncpu, plif_ref, plif_prote
     try:
         ref_df = pd.DataFrame(data={item: True for item in plif_ref}, index=['reference'])
         results = []
-        for i, (mol_id, sim) in enumerate(pool.imap_unordered(partial(plif.plif_similarity,
+        for i, (mol_id, sim, mol_contacts) in enumerate(pool.imap_unordered(partial(plif.plif_similarity,
                                                                         plif_protein_fname=plif_protein_fname,
                                                                         plif_ref_df=ref_df),
                                                                 mols), 1):
-            results.append((sim, mol_id))
+            results.append((sim, mol_id, mol_contacts))
             cur.execute(f"""UPDATE mols
                                 SET 
-                                    {db_col} = ? 
+                                    {db_col} = ?,
+                                    {contact_col} = ?
                                 WHERE
                                     id = ?
-                            """, (sim, mol_id))
+                            """, (sim,mol_contacts, mol_id))
             if i % 100 == 0:
                 conn.commit()
         conn.commit()
@@ -299,11 +302,11 @@ def get_docked_mol_data(conn, iteration):
     :return: DataFrame with columns RMSD and mol_id as index
     """
     cur = conn.cursor()
-    res = tuple(cur.execute(f"SELECT id, rmsd, plif_sim, plif_sim2 "
+    res = tuple(cur.execute(f"SELECT id, rmsd, plif_sim, plif_sim2, plif_contacts, plif_contacts2 "
                             f"FROM mols "
                             f"WHERE iteration = '{iteration}' AND mol_block IS NOT NULL "
                             f"ORDER BY id"))
-    df = pd.DataFrame(res, columns=['id', 'rmsd', 'plif_sim', 'plif_sim2']).set_index('id')
+    df = pd.DataFrame(res, columns=['id', 'rmsd', 'plif_sim', 'plif_sim2', 'plif_contacts', 'plif_contacts2']).set_index('id')
     return df
 
 

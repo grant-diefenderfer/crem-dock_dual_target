@@ -45,7 +45,7 @@ def filter_by_plif(mols, plif_ref, protein_fname, threshold=1):
         return []
     prot = plf.Molecule(Chem.MolFromPDBFile(protein_fname, removeHs=False, sanitize=False))
     fp = plf.Fingerprint(['Hydrophobic', 'HBDonor', 'HBAcceptor', 'Anionic', 'Cationic', 'CationPi', 'PiCation',
-                          'FaceToFace', 'EdgeToFace', 'MetalAcceptor'])
+                          'FaceToFace', 'EdgeToFace', 'MetalAcceptor', 'VdWContact', 'PiStacking'])
     fp.run_from_iterable((plf.Molecule.from_rdkit(mol) for mol in mols), prot)   # danger, hope it will always keep the order of molecules
     df = fp.to_dataframe()
     df.columns = ['.'.join(item.strip().lower() for item in items[1:]) for items in df.columns]
@@ -73,15 +73,20 @@ def plif_similarity(mol, plif_protein_fname, plif_ref_df, ncpu=1):
     """
     plf_prot = plf.Molecule(Chem.MolFromPDBFile(plif_protein_fname, removeHs=False, sanitize=False))
     fp = plf.Fingerprint(['Hydrophobic', 'HBDonor', 'HBAcceptor', 'Anionic', 'Cationic', 'CationPi', 'PiCation',
-                          'FaceToFace', 'EdgeToFace', 'MetalAcceptor'])
+                          'FaceToFace', 'EdgeToFace', 'MetalAcceptor', 'VdWContact', 'PiStacking'])
     fp.run_from_iterable([plf.Molecule.from_rdkit(mol)], plf_prot, n_jobs=ncpu)
     df = fp.to_dataframe()
     df.columns = ['.'.join(item.strip().lower() for item in items[1:]) for items in df.columns]
     with pd.option_context("future.no_silent_downcasting", True):
         df = pd.concat([plif_ref_df, df]).fillna(False).astype(bool)
+    #code to add plif contact names to db
+    #deleted df.iloc[0], test to see if works
+    matched_cols = df.columns[df.iloc[1]]
+    matched_contacts = ".".join(matched_cols)
+
     b = plf.to_bitvectors(df)
     sim = DataStructs.TverskySimilarity(b[0], b[1], 1, 0)
-    return mol.GetProp('_Name'), round(sim, 3)
+    return mol.GetProp('_Name'), round(sim, 3), matched_contacts
 
 
 def calc_plif(mols, protein_fname, sanitize_protein, plif_ref_df=None, ncpu=1):
@@ -96,17 +101,27 @@ def calc_plif(mols, protein_fname, sanitize_protein, plif_ref_df=None, ncpu=1):
     mol_names = [mol.GetProp('_Name') for mol in mols]
     plf_prot = plf.Molecule(Chem.MolFromPDBFile(protein_fname, removeHs=False, sanitize=sanitize_protein))
     fp = plf.Fingerprint(['Hydrophobic', 'HBDonor', 'HBAcceptor', 'Anionic', 'Cationic', 'CationPi', 'PiCation',
-                          'FaceToFace', 'EdgeToFace', 'MetalAcceptor'])
+                          'FaceToFace', 'EdgeToFace', 'MetalAcceptor', 'VdWContact', 'PiStacking'])
     fp.run_from_iterable([plf.Molecule.from_rdkit(mol) for mol in mols], plf_prot, n_jobs=ncpu)  # danger, hope it will always keep the order of molecules
     df = fp.to_dataframe()
     df.columns = ['.'.join(item.strip().lower() for item in items[1:]) for items in df.columns]
     if plif_ref_df is not None:
         with pd.option_context("future.no_silent_downcasting", True):
-            df = pd.concat([plif_ref_df, df]).fillna(False).astype(bool)
-        b = plf.to_bitvectors(df)
+            df_bool = pd.concat([plif_ref_df, df]).fillna(False).astype(bool)
+
+        #code to add plif contact names to db
+        mathced_contacts_list = []
+        ref_row = df_bool.iloc[0]
+        for i in range(1, len(df_bool)):
+            mol_row = df_bool.iloc[i]
+            mol_cols = df_bool.columns[mol_row]
+            mol_contacts_list.append(",".join(mol_cols))
+
+
+        b = plf.to_bitvectors(df_bool)
         sim = DataStructs.BulkTverskySimilarity(b[0], b[1:], 1, 0)
         sim = [round(x, 3) for x in sim]
-        df = pd.DataFrame(sim, columns=['plif_sim'])
+        df = pd.DataFrame({'plif_sim':sim, 'plif_contacts' : mol_contacts_list})
     df.index = mol_names
     return df
 
