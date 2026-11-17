@@ -6,6 +6,7 @@ import sqlite3
 from functools import partial
 from multiprocessing import Pool
 from rdkit import Chem
+from rdkit import RDLogger
 
 from crem.utils import sample_csp3, filter_max_ring_size
 
@@ -23,6 +24,9 @@ from cremdock.ranking import ranking_score
 from cremdock.selection import selection_and_grow_greedy, selection_and_grow_clust, selection_and_grow_clust_deep, \
     selection_and_grow_pareto
 from cremdock.sampling import sample_score, sample_score_exp, sample_HAC
+
+logging.getLogger().setLevel(logging.ERROR)
+RDLogger.DisableLog('rdApp.*')
 
 sample_functions = {'sample_csp3': sample_csp3,
                     'sample_score': sample_score,
@@ -42,11 +46,14 @@ def supply_parent_child_mols(d):
             n += 1
 
 
-def make_iteration(dbname, config,config2,  mol_dock_func, priority_func, ntop, nclust, mw, rmsd, rtb, logp, tpsa,
+def make_iteration(dbname, config,config2,  mol_dock_func, priority_func, ntop, nclust, mw, rmsd, rtb, logp, tpsa, skip_first,
                    alg_type, ranking_score_func, ncpu, protonation, ring_sample, make_docking=True, tautomerize=False,
                    dask_client=None, plif_list=None, plif_protein=None,plif_list2=None, plif_protein2=None, plif_cutoff=1,plif_cutoff2=1,  prefix=None,
-                   n_iterations=None,seed=None,**kwargs):
+                   n_iterations=None,seed=None,**kwargs):               
     iteration = database.get_last_iter_from_db(dbname)
+    skip = False
+    if skip_first and iteration == 0:
+        skip = True
     if n_iterations and n_iterations == iteration:
         final_iteration = True
     else:
@@ -124,11 +131,11 @@ def make_iteration(dbname, config,config2,  mol_dock_func, priority_func, ntop, 
             if iteration > 0 and rmsd is not None:
                 mol_data = mol_data.loc[mol_data['rmsd'] <= rmsd]  #  by RMSD
                 rmsd_plif_flag = True
-            if plif_list and len(mol_data.index) > 0:
+            if plif_list and len(mol_data.index) > 0 and not skip:
                 mol_data = mol_data.loc[mol_data['plif_sim'] >= plif_cutoff]  # filter by PLIF
                 
                 rmsd_plif_flag = True
-            if plif_list2 and len(mol_data.index) > 0:
+            if plif_list2 and len(mol_data.index) > 0 and not skip:
                 mol_data = mol_data.loc[mol_data['plif_sim2'] >= plif_cutoff2]
                 rmsd_plif_flag = True
             if rmsd_plif_flag:
@@ -319,6 +326,8 @@ def entry_point():
     group6.add_argument('--plif_protein2', metavar='protein.pdb', required=False, type=filepath_type,
                         help='PDB file with the same second protein as for docking, but it should have all hydrogens '
                              'explicit. Required for correct PLIF detection.')
+    group6.add_argument('--skip_first', metavar='BOOL', required=False, default=False, type=bool, 
+                        help='Option to skip initial PLIF filtering on input SMILES fragments')
 
     group5 = parser.add_argument_group('Docking parameters')
     group5.add_argument('--protonation', default=None, required=False, type=protonation_type,
@@ -447,7 +456,7 @@ def entry_point():
                                             ncpu=args.ncpu, protonation=args.protonation, ring_sample=args.ring_sample,
                                             make_docking=make_docking, dask_client=dask_client, plif_list=args.plif,
                                             plif_list2=args.plif2, plif_protein2=args.plif_protein2, plif_cutoff2=args.plif_cutoff2,
-                                            plif_protein=args.plif_protein, plif_cutoff=args.plif_cutoff,
+                                            plif_protein=args.plif_protein, plif_cutoff=args.plif_cutoff, skip_first=args.skip_first,
                                             prefix=args.prefix, db_name=args.db, radius=args.radius,
                                             min_freq=args.min_freq, min_atoms=args.min_atoms, max_atoms=args.max_atoms,
                                             max_replacements=args.max_replacements, sample_func=sample_func,
